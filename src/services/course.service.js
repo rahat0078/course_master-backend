@@ -26,13 +26,14 @@ const getCourses = async (query) => {
   }
 
   if (category && typeof category === "string") {
-    filter.category = category;
+    filter.category = { $regex: category, $options: "i" };
   }
 
-  if (tags && typeof tags === "string") {
-    const tagArray = tags.split(",").map(t => t.trim()).filter(t => t); // "mern,react"
+ if (tags && typeof tags === "string") {
+    const tagArray = tags.split(",").map(t => t.trim()).filter(t => t);
     if (tagArray.length > 0) {
-      filter.tags = { $in: tagArray };
+      filter.tags = { 
+        $in: tagArray.map(t => new RegExp(t, "i"))       };
     }
   }
 
