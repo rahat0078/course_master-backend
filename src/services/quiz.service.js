@@ -6,23 +6,29 @@ const submitQuiz = async (studentId, payload) => {
   const { courseId, lessonId, answers } = payload;
   // answers = [selectedIndex, selectedIndex, ...]
 
-  const enrolled = await Enrollment.findOne({ student: studentId, course: courseId });
+  const enrolled = await Enrollment.findOne({
+    student: studentId,
+    course: courseId,
+  });
   if (!enrolled) throw new Error("You are not enrolled in this course");
 
   const course = await Course.findById(courseId);
   if (!course) throw new Error("Course not found");
 
-  // find lesson quiz
+  // find lesson quiz securely
   let quiz = null;
+  let targetLesson = null;
+  
   for (const mod of course.syllabus) {
-    const lesson = mod.lessons.id(lessonId);
-    if (lesson) {
-      quiz = lesson.quiz || [];
+    targetLesson = mod.lessons.id ? mod.lessons.id(lessonId) : mod.lessons.find(l => l._id.toString() === String(lessonId));
+    if (targetLesson) {
+      quiz = targetLesson.quiz || [];
       break;
     }
   }
-  if (!quiz) throw new Error("Lesson not found");
-  if (quiz.length === 0) throw new Error("No quiz in this lesson");
+
+  if (!targetLesson) throw new Error("Lesson not found");
+  if (!quiz || quiz.length === 0) throw new Error("No quiz in this lesson");
 
   let score = 0;
   quiz.forEach((q, i) => {
@@ -30,19 +36,7 @@ const submitQuiz = async (studentId, payload) => {
   });
 
   const total = quiz.length;
-  // Code-4 bug: multiplied by 10 instead of 100
-  const percent = Math.round((score / total) * 10);
-
-  // Check if student already submitted this quiz (optional - allow retakes)
-  // If you want to prevent duplicates, uncomment the following:
-  // const existing = await QuizSubmission.findOne({
-  //   student: studentId,
-  //   course: courseId,
-  //   lessonId,
-  // });
-  // if (existing) {
-  //   throw new Error("You have already submitted this quiz");
-  // }
+  const percent = Math.round((score / total) * 100);
 
   // Save quiz submission to database
   const submission = await QuizSubmission.create({
@@ -55,9 +49,34 @@ const submitQuiz = async (studentId, payload) => {
     percent,
   });
 
-  // Verify it was saved
   if (!submission || !submission._id) {
     throw new Error("Failed to save quiz submission");
+  }
+
+  // ✅ Fix: Automatically mark lesson as completed in Enrollment progress if passing score (e.g., >= 50% or any completion)
+  if (percent >= 50) {
+    if (!enrolled.progress) {
+      enrolled.progress = { completedLessons: [], percent: 0 };
+    }
+    
+    if (!enrolled.progress.completedLessons.includes(lessonId)) {
+      enrolled.progress.completedLessons.push(lessonId);
+      
+      // Calculate total course lessons to update percentage
+      let totalLessonsCount = 0;
+      course.syllabus.forEach(m => {
+        if (m.lessons) totalLessonsCount += m.lessons.length;
+      });
+
+      if (totalLessonsCount > 0) {
+        enrolled.progress.percent = Math.min(
+          100,
+          Math.round((enrolled.progress.completedLessons.length / totalLessonsCount) * 100)
+        );
+      }
+
+      await enrolled.save();
+    }
   }
 
   return {
@@ -98,8 +117,11 @@ const getQuizStats = async (studentId, courseId) => {
   const latestSubmissions = {};
   submissions.forEach((sub) => {
     const lessonIdStr = String(sub.lessonId);
-    if (!latestSubmissions[lessonIdStr] ||
-      new Date(sub.createdAt) > new Date(latestSubmissions[lessonIdStr].createdAt)) {
+    if (
+      !latestSubmissions[lessonIdStr] ||
+      new Date(sub.createdAt) >
+        new Date(latestSubmissions[lessonIdStr].createdAt)
+    ) {
       latestSubmissions[lessonIdStr] = sub;
     }
   });

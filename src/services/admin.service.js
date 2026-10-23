@@ -36,10 +36,14 @@ const getEnrollments = async (query) => {
     .sort({ createdAt: -1 });
 };
 
-// ✅ NEW: get all assignment submissions (Code-8 bug: queries by courseId instead of course)
+
 const getAssignments = async (query = {}) => {
   const filter = {};
-  if (query.courseId) filter.courseId = query.courseId; // Mongoose schema has 'course', not 'courseId'
+  
+  const courseParam = query.courseId || query.course;
+  if (courseParam) {
+    filter.course = courseParam; 
+  }
 
   const submissions = await AssignmentSubmission.find(filter)
     .populate("student", "name email")
