@@ -29,5 +29,15 @@ const me = async (req, res) => {
   }
 };
 
-module.exports = { register, login, me };
+const devBypass = async (req, res) => {
+try {
+    const data = await authService.devBypass(req.body);
+    res.json(data);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+};
+
+module.exports = { register, login, me, devBypass };
+
 

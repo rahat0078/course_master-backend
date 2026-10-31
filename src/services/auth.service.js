@@ -60,4 +60,24 @@ const getMe = async (userId) => {
   return user;
 };
 
-module.exports = { register, login, getMe };
+const devBypass = async ({ role }) => {
+  const targetRole = role === "admin" ? "admin" : "student";
+  
+  let user = await User.findOne({ role: targetRole });
+  if (!user) {
+    user = await User.findOne({});
+  }
+  if (!user) {
+    throw new Error("No users found in database. Please register at least one user first.");
+  }
+
+  const token = generateToken({ id: user._id, role: user.role });
+
+  return {
+    token,
+    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+  };
+};
+
+module.exports = { register, login, getMe, devBypass };
+
